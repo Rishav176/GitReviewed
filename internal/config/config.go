@@ -15,25 +15,27 @@ type Config struct {
 	SlackToken   string
 	SlackChannel string
 
+	// AI configuration
+	GeminiAPIKey string  // CHANGED FROM AnthropicAPIKey
+
 	// Application configuration
 	Environment string
 	Port        string
 	LogLevel    string
 }
 
-// Load reads configuration from environment variables
 func Load() (*Config, error) {
 	cfg := &Config{
 		GitHubToken:   os.Getenv("GITHUB_TOKEN"),
 		WebhookSecret: os.Getenv("WEBHOOK_SECRET"),
 		SlackToken:    os.Getenv("SLACK_TOKEN"),
 		SlackChannel:  os.Getenv("SLACK_CHANNEL"),
+		GeminiAPIKey:  os.Getenv("GEMINI_API_KEY"),  // CHANGED
 		Environment:   getEnvOrDefault("ENVIRONMENT", "development"),
 		Port:          getEnvOrDefault("PORT", "8080"),
 		LogLevel:      getEnvOrDefault("LOG_LEVEL", "info"),
 	}
 
-	// Validate required fields
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -41,7 +43,6 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-// Validate checks that all required configuration is present
 func (c *Config) Validate() error {
 	if c.GitHubToken == "" {
 		return fmt.Errorf("GITHUB_TOKEN is required")
@@ -54,6 +55,9 @@ func (c *Config) Validate() error {
 	}
 	if c.SlackChannel == "" {
 		return fmt.Errorf("SLACK_CHANNEL is required")
+	}
+	if c.GeminiAPIKey == "" {
+		return fmt.Errorf("GEMINI_API_KEY is required")
 	}
 	return nil
 }

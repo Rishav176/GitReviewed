@@ -29,9 +29,11 @@ func main() {
 	handler := handlers.NewWebhookHandler(cfg)
 
 	// Register routes
+	// Register routes
 	http.HandleFunc("/webhook", handler.HandleWebhook)
 	http.HandleFunc("/health", handler.HealthCheck)
 	http.HandleFunc("/test-slack", handler.TestSlack)
+	http.HandleFunc("/test-gemini", handler.TestGemini)
 
 	// Start server
 	addr := ":" + cfg.Port

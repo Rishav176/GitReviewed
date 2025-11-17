@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Rishav176/GitReviewed/internal/ai"
 	"github.com/Rishav176/GitReviewed/internal/config"
 	"github.com/Rishav176/GitReviewed/internal/git"
 	"github.com/Rishav176/GitReviewed/internal/models"
@@ -18,19 +19,20 @@ import (
 
 // WebhookHandler handles incoming GitHub webhooks
 type WebhookHandler struct {
-	config       *config.Config
-	gitClient    git.Client
-	slackClient  *slack.Client
+	config        *config.Config
+	gitClient     git.Client
+	slackClient   *slack.Client
 	secretScanner *scanner.Scanner
+	aiClient      *ai.Client
 }
 
-// NewWebhookHandler creates a new webhook handler
 func NewWebhookHandler(cfg *config.Config) *WebhookHandler {
 	return &WebhookHandler{
 		config:        cfg,
 		gitClient:     git.NewGitHubClient(cfg.GitHubToken, cfg.WebhookSecret),
 		slackClient:   slack.NewClient(cfg.SlackToken, cfg.SlackChannel),
 		secretScanner: scanner.NewScanner(),
+		aiClient:      ai.NewClient(cfg.GeminiAPIKey),
 	}
 }
 
@@ -131,16 +133,30 @@ func (h *WebhookHandler) processPullRequest(payload models.WebhookPayload) {
 		ScanResult:  scanResult,
 	}
 
-	// Send notification to Slack
+	// Send security alert if issues found
 	if scanResult.Found {
 		log.Printf("Sending security alert to Slack")
 		if err := h.slackClient.SendSecurityAlert(reviewCtx); err != nil {
 			log.Printf("Error sending Slack alert: %v", err)
 		}
+	}
+
+	// Get AI code review (per-file approach)
+	log.Printf("Requesting AI code review for %d files", len(diffFiles))
+	aiReview, err := h.aiClient.ReviewCodeByFile(reviewCtx) // CHANGED: Use ReviewCodeByFile
+	if err != nil {
+		log.Printf("⚠️  AI review failed: %v", err)
+		
+		// Still send a message that secret scanning completed
+		if !scanResult.Found {
+			if err := h.slackClient.SendReviewComplete(reviewCtx); err != nil {
+				log.Printf("Error sending review complete message: %v", err)
+			}
+		}
 	} else {
-		log.Printf("Sending review complete message to Slack")
-		if err := h.slackClient.SendReviewComplete(reviewCtx); err != nil {
-			log.Printf("Error sending Slack message: %v", err)
+		log.Printf("AI review received for all files, sending to Slack")
+		if err := h.slackClient.SendAIReview(reviewCtx, aiReview); err != nil {
+			log.Printf("Error sending AI review to Slack: %v", err)
 		}
 	}
 
@@ -162,4 +178,15 @@ func (h *WebhookHandler) TestSlack(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Slack connection successful"))
+}
+
+// TestGemini tests the Gemini API connection
+func (h *WebhookHandler) TestGemini(w http.ResponseWriter, r *http.Request) {
+	if err := h.aiClient.TestConnection(); err != nil {
+		http.Error(w, fmt.Sprintf("Gemini connection failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Gemini connection successful"))
 }

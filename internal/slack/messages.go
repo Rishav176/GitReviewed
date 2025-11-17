@@ -97,6 +97,51 @@ func BuildSecurityAlertBlocks(ctx models.ReviewContext) []slack.Block {
 	return blocks
 }
 
+// BuildAIReviewBlocks creates Slack blocks for AI code review
+func BuildAIReviewBlocks(ctx models.ReviewContext, aiReview string) []slack.Block {
+	blocks := []slack.Block{}
+
+	// Header
+	headerText := slack.NewTextBlockObject("mrkdwn",
+		":robot_face: *AI Code Review*",
+		false, false)
+	headerBlock := slack.NewSectionBlock(headerText, nil, nil)
+	blocks = append(blocks, headerBlock)
+
+	// PR Information
+	prInfoText := slack.NewTextBlockObject("mrkdwn",
+		fmt.Sprintf("*Repository:* %s\n*PR #%d:* <%s|%s>\n*Author:* %s",
+			ctx.Repository.FullName,
+			ctx.PullRequest.Number,
+			ctx.PullRequest.HTMLURL,
+			ctx.PullRequest.Title,
+			ctx.PullRequest.User.Login,
+		),
+		false, false)
+	prInfoBlock := slack.NewSectionBlock(prInfoText, nil, nil)
+	blocks = append(blocks, prInfoBlock)
+
+	// Divider
+	blocks = append(blocks, slack.NewDividerBlock())
+
+	// AI Review (split into chunks if too long)
+	reviewText := slack.NewTextBlockObject("mrkdwn", aiReview, false, false)
+	reviewBlock := slack.NewSectionBlock(reviewText, nil, nil)
+	blocks = append(blocks, reviewBlock)
+
+	// Divider
+	blocks = append(blocks, slack.NewDividerBlock())
+
+	// Button to view PR
+	buttonText := slack.NewTextBlockObject("plain_text", "View Pull Request", false, false)
+	button := slack.NewButtonBlockElement("view_pr", "view_pr", buttonText)
+	button.URL = ctx.PullRequest.HTMLURL
+	actionBlock := slack.NewActionBlock("pr_actions", button)
+	blocks = append(blocks, actionBlock)
+
+	return blocks
+}
+
 // buildIssueSection creates a section for a specific severity level
 func buildIssueSection(severity, emoji string, issues []models.SecurityIssue) []slack.Block {
 	blocks := []slack.Block{}

@@ -38,6 +38,23 @@ func (c *Client) SendSecurityAlert(ctx models.ReviewContext) error {
 	return nil
 }
 
+// SendAIReview sends AI code review to Slack
+func (c *Client) SendAIReview(ctx models.ReviewContext, aiReview string) error {
+	blocks := BuildAIReviewBlocks(ctx, aiReview)
+
+	_, _, err := c.api.PostMessage(
+		c.defaultChannel,
+		slack.MsgOptionBlocks(blocks...),
+		slack.MsgOptionText("AI Code Review Complete", false),
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to send Slack message: %w", err)
+	}
+
+	return nil
+}
+
 // SendReviewComplete sends a message when review is complete with no issues
 func (c *Client) SendReviewComplete(ctx models.ReviewContext) error {
 	blocks := BuildReviewCompleteBlocks(ctx)
