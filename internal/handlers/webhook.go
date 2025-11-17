@@ -110,10 +110,19 @@ func (h *WebhookHandler) processPullRequest(payload models.WebhookPayload) {
 	owner := payload.Repository.Owner.Login
 	repo := payload.Repository.Name
 	prNumber := payload.PullRequest.Number
+	sha := payload.PullRequest.Head.SHA
+
+	// Post pending status
+	log.Printf("Posting pending status to PR")
+	if err := h.gitClient.PostCommitStatus(ctx, owner, repo, sha, "pending", "GitReviewed is scanning for secrets...", "gitreviewed/security-scan"); err != nil {
+		log.Printf("Error posting pending status: %v", err)
+	}
 
 	diffFiles, err := h.gitClient.GetPRDiff(ctx, owner, repo, prNumber)
 	if err != nil {
 		log.Printf("Error fetching PR diff: %v", err)
+		// Post error status
+		h.gitClient.PostCommitStatus(ctx, owner, repo, sha, "error", "Failed to fetch PR diff", "gitreviewed/security-scan")
 		return
 	}
 
@@ -133,6 +142,40 @@ func (h *WebhookHandler) processPullRequest(payload models.WebhookPayload) {
 		ScanResult:  scanResult,
 	}
 
+	// Determine if there are CRITICAL issues
+	hasCriticalSecrets := false
+	criticalCount := 0
+	for _, issue := range scanResult.Issues {
+		if issue.Severity == "CRITICAL" {
+			hasCriticalSecrets = true
+			criticalCount++
+		}
+	}
+
+	// Post status based on scan results
+	if hasCriticalSecrets {
+		// BLOCK the PR - set status to failure
+		statusMsg := fmt.Sprintf("❌ Found %d critical secret(s) - merge blocked!", criticalCount)
+		log.Printf("Posting failure status: %s", statusMsg)
+		if err := h.gitClient.PostCommitStatus(ctx, owner, repo, sha, "failure", statusMsg, "gitreviewed/security-scan"); err != nil {
+			log.Printf("Error posting failure status: %v", err)
+		}
+	} else if scanResult.Found {
+		// Has non-critical issues - warn but don't block
+		statusMsg := fmt.Sprintf("⚠️  Found %d non-critical issue(s) - review recommended", len(scanResult.Issues))
+		log.Printf("Posting success status with warning: %s", statusMsg)
+		if err := h.gitClient.PostCommitStatus(ctx, owner, repo, sha, "success", statusMsg, "gitreviewed/security-scan"); err != nil {
+			log.Printf("Error posting status: %v", err)
+		}
+	} else {
+		// No secrets found - all clear!
+		statusMsg := "✅ No secrets detected - safe to merge"
+		log.Printf("Posting success status: %s", statusMsg)
+		if err := h.gitClient.PostCommitStatus(ctx, owner, repo, sha, "success", statusMsg, "gitreviewed/security-scan"); err != nil {
+			log.Printf("Error posting success status: %v", err)
+		}
+	}
+
 	// Send security alert if issues found
 	if scanResult.Found {
 		log.Printf("Sending security alert to Slack")
@@ -143,7 +186,7 @@ func (h *WebhookHandler) processPullRequest(payload models.WebhookPayload) {
 
 	// Get AI code review (per-file approach)
 	log.Printf("Requesting AI code review for %d files", len(diffFiles))
-	aiReview, err := h.aiClient.ReviewCodeByFile(reviewCtx) // CHANGED: Use ReviewCodeByFile
+	aiReview, err := h.aiClient.ReviewCodeByFile(reviewCtx)
 	if err != nil {
 		log.Printf("⚠️  AI review failed: %v", err)
 		

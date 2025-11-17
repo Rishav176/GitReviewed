@@ -33,6 +33,22 @@ func NewGitHubClient(token, webhookSecret string) *GitHubClient {
 	}
 }
 
+// PostCommitStatus posts a status check to a commit
+func (g *GitHubClient) PostCommitStatus(ctx context.Context, owner, repo, sha string, state, description, context string) error {
+	status := &github.RepoStatus{
+		State:       github.String(state),
+		Description: github.String(description),
+		Context:     github.String(context),
+	}
+
+	_, _, err := g.client.Repositories.CreateStatus(ctx, owner, repo, sha, status)
+	if err != nil {
+		return fmt.Errorf("failed to post commit status: %w", err)
+	}
+
+	return nil
+}
+
 // GetPRDiff fetches the diff for a pull request
 func (g *GitHubClient) GetPRDiff(ctx context.Context, owner, repo string, prNumber int) ([]models.DiffFile, error) {
 	// Get the list of files changed in the PR

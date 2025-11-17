@@ -13,4 +13,7 @@ type Client interface {
 	
 	// VerifyWebhook verifies the webhook signature
 	VerifyWebhook(payload []byte, signature string) bool
+	
+	// PostCommitStatus posts a status check to a commit
+	PostCommitStatus(ctx context.Context, owner, repo, sha string, state, description, context string) error
 }
